@@ -67,7 +67,7 @@ export function Layout({ children }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 right-0 z-50 w-64 bg-slate-900 flex flex-col transform transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 right-0 z-50 w-64 bg-slate-900 flex flex-col transform transition-transform lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         }`}
       >
@@ -106,7 +106,7 @@ export function Layout({ children }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 lg:mr-64">
         {/* Mobile header */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
           <h1 className="text-lg font-bold text-slate-900">Sushi</h1>

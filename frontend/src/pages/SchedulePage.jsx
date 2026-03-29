@@ -730,17 +730,52 @@ function AssignmentsView({ workingDays, assignments, allAssignments, teams, isPu
 }
 
 /* ============================================
-   Manager View (Dashboard)
+   Manager View (Dashboard + Assignment)
    ============================================ */
 function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [assigning, setAssigning] = useState(false);
+
   if (!dashboardData) return <LoadingSpinner />;
 
   const { working_days, preferences_by_date, assignments_by_date, capacities } = dashboardData;
 
+  const handleAssign = async (employeeId, dateStr, teamId) => {
+    setAssigning(true);
+    try {
+      await api.post("/assignments/bulk_assign/", {
+        month_config_id: selectedMonth.id,
+        assignments: [{ employee_id: employeeId, date: dateStr, team_id: teamId }],
+      });
+      await onRefresh();
+    } catch (err) {
+      alert("שגיאה: " + err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleUnassign = async (assignmentId) => {
+    setAssigning(true);
+    try {
+      await api.delete(`/assignments/${assignmentId}/`);
+      await onRefresh();
+    } catch (err) {
+      alert("שגיאה: " + err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const selectedPrefs = selectedDate ? (preferences_by_date[selectedDate] || []) : [];
+  const selectedAssigns = selectedDate ? (assignments_by_date[selectedDate] || []) : [];
+  const assignedEmployeeIds = selectedAssigns.map((a) => a.employee_id);
+
   return (
     <div className="space-y-6">
+      {/* Overview table */}
       <Card className="p-6">
-        <h3 className="font-semibold text-slate-900 mb-4">סקירת חודש — תצוגת ניהול</h3>
+        <h3 className="font-semibold text-slate-900 mb-4">סקירת חודש — לחץ על יום לשיבוץ</h3>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -769,12 +804,18 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
                 const prefs = preferences_by_date[dateStr] || [];
                 const assigns = assignments_by_date[dateStr] || [];
                 const d = new Date(dateStr + "T00:00:00");
+                const isSelected = selectedDate === dateStr;
 
                 return (
                   <tr
                     key={dateStr}
-                    className={`border-t border-slate-100 ${
-                      isToday(dateStr) ? "bg-brand-50" : ""
+                    onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                    className={`border-t border-slate-100 cursor-pointer transition-colors ${
+                      isSelected
+                        ? "bg-brand-100"
+                        : isToday(dateStr)
+                        ? "bg-brand-50 hover:bg-brand-100"
+                        : "hover:bg-slate-50"
                     }`}
                   >
                     <td className="p-2 font-medium">
@@ -817,6 +858,127 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
           </table>
         </div>
       </Card>
+
+      {/* Assignment panel for selected date */}
+      {selectedDate && (
+        <Card className="p-6 animate-fade-in">
+          <h3 className="font-semibold text-slate-900 mb-1">
+            שיבוץ — {getDayNameHe(selectedDate)} {new Date(selectedDate + "T00:00:00").getDate()}/{new Date(selectedDate + "T00:00:00").getMonth() + 1}
+          </h3>
+          <p className="text-sm text-slate-500 mb-4">
+            {selectedPrefs.length} בקשות · {selectedAssigns.length} שובצו
+          </p>
+
+          {/* Currently assigned */}
+          {selectedAssigns.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-sm font-medium text-slate-700 mb-2">משובצים</h4>
+              <div className="space-y-2">
+                {selectedAssigns.map((a) => (
+                  <div
+                    key={a.employee_id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold">
+                        {a.employee_name?.[0]}
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">{a.employee_name}</span>
+                      <span
+                        className="px-2 py-0.5 rounded text-xs font-medium text-white"
+                        style={{ backgroundColor: teams.find((t) => t.id === a.team_id)?.color || "#666" }}
+                      >
+                        {a.team_name}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleUnassign(a.assignment_id || a.id)}
+                      disabled={assigning}
+                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                    >
+                      הסר
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Requests — unassigned techs */}
+          <div>
+            <h4 className="text-sm font-medium text-slate-700 mb-2">בקשות (לא משובצים)</h4>
+            {selectedPrefs.filter((p) => !assignedEmployeeIds.includes(p.employee_id)).length === 0 ? (
+              <p className="text-sm text-slate-400">
+                {selectedPrefs.length === 0 ? "אין בקשות ליום זה" : "כל המבקשים שובצו"}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {selectedPrefs
+                  .filter((p) => !assignedEmployeeIds.includes(p.employee_id))
+                  .map((pref) => (
+                    <div
+                      key={pref.employee_id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-slate-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
+                          {pref.employee_name?.[0]}
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-slate-900">{pref.employee_name}</span>
+                          {pref.preferred_team_ids?.length > 0 && (
+                            <div className="flex gap-1 mt-1">
+                              {pref.preferred_team_ids.map((tid) => {
+                                const team = teams.find((t) => t.id === tid);
+                                return team ? (
+                                  <span
+                                    key={tid}
+                                    className="text-xs px-1.5 py-0.5 rounded"
+                                    style={{ backgroundColor: team.color + "20", color: team.color }}
+                                  >
+                                    {team.name_he}
+                                  </span>
+                                ) : null;
+                              })}
+                            </div>
+                          )}
+                          {pref.notes && (
+                            <p className="text-xs text-slate-400 mt-0.5">{pref.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        {teams.map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => handleAssign(pref.employee_id, selectedDate, t.id)}
+                            disabled={assigning}
+                            className="px-3 py-1.5 rounded text-xs font-medium transition-colors hover:text-white disabled:opacity-50"
+                            style={{
+                              backgroundColor: pref.preferred_team_ids?.includes(t.id)
+                                ? t.color
+                                : t.color + "20",
+                              color: pref.preferred_team_ids?.includes(t.id) ? "white" : t.color,
+                            }}
+                            onMouseEnter={(e) => { e.target.style.backgroundColor = t.color; e.target.style.color = "white"; }}
+                            onMouseLeave={(e) => {
+                              const isPref = pref.preferred_team_ids?.includes(t.id);
+                              e.target.style.backgroundColor = isPref ? t.color : t.color + "20";
+                              e.target.style.color = isPref ? "white" : t.color;
+                            }}
+                            title={`שבץ ל${t.name_he}`}
+                          >
+                            {t.name_he}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
