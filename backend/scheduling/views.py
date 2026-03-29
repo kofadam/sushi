@@ -84,7 +84,7 @@ class MonthConfigViewSet(viewsets.ModelViewSet):
             ShiftPreference.objects
             .filter(month_config=config)
             .select_related("employee")
-            .prefetch_related("preferred_teams")
+            .prefetch_related("preferred_teams", "employee__qualified_teams")
         )
         prefs_by_date = {}
         for pref in preferences:
@@ -95,6 +95,7 @@ class MonthConfigViewSet(viewsets.ModelViewSet):
                 "employee_id": pref.employee_id,
                 "employee_name": pref.employee.get_full_name(),
                 "preferred_team_ids": list(pref.preferred_teams.values_list("id", flat=True)),
+                "qualified_team_ids": list(pref.employee.qualified_teams.values_list("id", flat=True)),
                 "notes": pref.notes,
             })
 
@@ -110,6 +111,7 @@ class MonthConfigViewSet(viewsets.ModelViewSet):
             if ds not in assigns_by_date:
                 assigns_by_date[ds] = []
             assigns_by_date[ds].append({
+                "id": a.id,
                 "employee_id": a.employee_id,
                 "employee_name": a.employee.get_full_name(),
                 "team_id": a.team_id,

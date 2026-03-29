@@ -730,16 +730,19 @@ function AssignmentsView({ workingDays, assignments, allAssignments, teams, isPu
 }
 
 /* ============================================
-   Manager View (Dashboard + Assignment)
+   Manager View (Dashboard + Auto-Assign)
    ============================================ */
 function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
   const [selectedDate, setSelectedDate] = useState(null);
-  const [assigning, setAssigning] = useState(false);
+  const [proposals, setProposals] = useState(null); // null = not in review mode
+  const [saving, setSaving] = useState(false);
   const assignPanelRef = useRef(null);
 
   useEffect(() => {
     if (selectedDate && assignPanelRef.current) {
-      assignPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => {
+        assignPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
     }
   }, [selectedDate]);
 
@@ -747,36 +750,118 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
 
   const { working_days, preferences_by_date, assignments_by_date, capacities } = dashboardData;
 
-  const handleAssign = async (employeeId, dateStr, teamId) => {
-    setAssigning(true);
+  // Auto-assign logic: propose assignments based on preferences
+  const generateProposals = (dateStr) => {
+    const prefs = preferences_by_date[dateStr] || [];
+    const assigns = assignments_by_date[dateStr] || [];
+    const alreadyAssignedIds = assigns.map((a) => a.employee_id);
+
+    // Track remaining capacity per team
+    const remaining = {};
+    for (const t of teams) {
+      const cap = capacities[t.id] || 0;
+      const filled = assigns.filter((a) => a.team_id === t.id).length;
+      remaining[t.id] = cap - filled;
+    }
+
+    const result = [];
+    for (const pref of prefs) {
+      if (alreadyAssignedIds.includes(pref.employee_id)) continue;
+
+      let assignedTeamId = null;
+
+      // 1. Try preferred team with capacity
+      for (const tid of (pref.preferred_team_ids || [])) {
+        if (pref.qualified_team_ids?.includes(tid) && remaining[tid] > 0) {
+          assignedTeamId = tid;
+          break;
+        }
+      }
+
+      // 2. Fallback: any qualified team with capacity
+      if (!assignedTeamId) {
+        for (const tid of (pref.qualified_team_ids || [])) {
+          if (remaining[tid] > 0) {
+            assignedTeamId = tid;
+            break;
+          }
+        }
+      }
+
+      if (assignedTeamId) {
+        remaining[assignedTeamId]--;
+      }
+
+      result.push({
+        employee_id: pref.employee_id,
+        employee_name: pref.employee_name,
+        preferred_team_ids: pref.preferred_team_ids || [],
+        qualified_team_ids: pref.qualified_team_ids || [],
+        proposed_team_id: assignedTeamId,
+        notes: pref.notes,
+      });
+    }
+
+    return result;
+  };
+
+  const handleAutoAssign = (dateStr) => {
+    const props = generateProposals(dateStr);
+    setProposals(props);
+  };
+
+  const updateProposal = (employeeId, newTeamId) => {
+    setProposals((prev) =>
+      prev.map((p) =>
+        p.employee_id === employeeId ? { ...p, proposed_team_id: newTeamId } : p
+      )
+    );
+  };
+
+  const removeProposal = (employeeId) => {
+    setProposals((prev) => prev.filter((p) => p.employee_id !== employeeId));
+  };
+
+  const confirmAssignments = async () => {
+    if (!proposals || !selectedDate) return;
+    const valid = proposals.filter((p) => p.proposed_team_id);
+    if (valid.length === 0) return;
+
+    setSaving(true);
     try {
       await api.post("/assignments/bulk_assign/", {
         month_config_id: selectedMonth.id,
-        assignments: [{ employee_id: employeeId, date: dateStr, team_id: teamId }],
+        assignments: valid.map((p) => ({
+          employee_id: p.employee_id,
+          date: selectedDate,
+          team_id: p.proposed_team_id,
+        })),
       });
+      setProposals(null);
       await onRefresh();
     } catch (err) {
       alert("שגיאה: " + err.message);
     } finally {
-      setAssigning(false);
+      setSaving(false);
     }
   };
 
   const handleUnassign = async (assignmentId) => {
-    setAssigning(true);
+    setSaving(true);
     try {
       await api.delete(`/assignments/${assignmentId}/`);
       await onRefresh();
     } catch (err) {
       alert("שגיאה: " + err.message);
     } finally {
-      setAssigning(false);
+      setSaving(false);
     }
   };
 
   const selectedPrefs = selectedDate ? (preferences_by_date[selectedDate] || []) : [];
   const selectedAssigns = selectedDate ? (assignments_by_date[selectedDate] || []) : [];
   const assignedEmployeeIds = selectedAssigns.map((a) => a.employee_id);
+  const unassignedPrefs = selectedPrefs.filter((p) => !assignedEmployeeIds.includes(p.employee_id));
 
   return (
     <div className="space-y-6">
@@ -816,7 +901,10 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
                 return (
                   <tr
                     key={dateStr}
-                    onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                    onClick={() => {
+                      setSelectedDate(isSelected ? null : dateStr);
+                      setProposals(null);
+                    }}
                     className={`border-t border-slate-100 cursor-pointer transition-colors ${
                       isSelected
                         ? "bg-brand-100"
@@ -870,121 +958,211 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
       {selectedDate && (
         <div ref={assignPanelRef}>
         <Card className="p-6 animate-fade-in">
-          <h3 className="font-semibold text-slate-900 mb-1">
-            שיבוץ — {getDayNameHe(selectedDate)} {new Date(selectedDate + "T00:00:00").getDate()}/{new Date(selectedDate + "T00:00:00").getMonth() + 1}
-          </h3>
-          <p className="text-sm text-slate-500 mb-4">
-            {selectedPrefs.length} בקשות · {selectedAssigns.length} שובצו
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold text-slate-900">
+                שיבוץ — {getDayNameHe(selectedDate)} {new Date(selectedDate + "T00:00:00").getDate()}/{new Date(selectedDate + "T00:00:00").getMonth() + 1}
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                {selectedPrefs.length} בקשות · {selectedAssigns.length} שובצו · {unassignedPrefs.length} ממתינים
+              </p>
+            </div>
+            {unassignedPrefs.length > 0 && !proposals && (
+              <Button onClick={() => handleAutoAssign(selectedDate)}>
+                שיבוץ אוטומטי ({unassignedPrefs.length})
+              </Button>
+            )}
+          </div>
 
-          {/* Currently assigned */}
+          {/* Already assigned */}
           {selectedAssigns.length > 0 && (
             <div className="mb-6">
               <h4 className="text-sm font-medium text-slate-700 mb-2">משובצים</h4>
               <div className="space-y-2">
-                {selectedAssigns.map((a) => (
+                {selectedAssigns.map((a) => {
+                  const team = teams.find((t) => t.id === a.team_id);
+                  return (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                          style={{ backgroundColor: team?.color || "#666" }}
+                        >
+                          {a.employee_name?.[0]}
+                        </div>
+                        <span className="text-sm font-medium text-slate-900">{a.employee_name}</span>
+                        <span
+                          className="px-2 py-0.5 rounded text-xs font-medium text-white"
+                          style={{ backgroundColor: team?.color || "#666" }}
+                        >
+                          {a.team_name}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUnassign(a.id); }}
+                        disabled={saving}
+                        className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                      >
+                        הסר
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Auto-assign proposals (review mode) */}
+          {proposals && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-slate-700">
+                  הצעת שיבוץ — בדוק ואשר
+                </h4>
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setProposals(null)}>
+                    ביטול
+                  </Button>
+                  <Button size="sm" onClick={confirmAssignments} disabled={saving}>
+                    {saving ? "שומר..." : `אשר שיבוץ (${proposals.filter((p) => p.proposed_team_id).length})`}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {proposals.map((p) => {
+                  const proposedTeam = teams.find((t) => t.id === p.proposed_team_id);
+                  return (
+                    <div
+                      key={p.employee_id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-amber-200 bg-amber-50"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center text-xs font-bold">
+                          {p.employee_name?.[0]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-slate-900">{p.employee_name}</span>
+                          {/* Qualification + preference legend */}
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {teams.map((t) => {
+                              const isQualified = p.qualified_team_ids?.includes(t.id);
+                              const isPreferred = p.preferred_team_ids?.includes(t.id);
+                              if (!isQualified) return null;
+                              return (
+                                <span
+                                  key={t.id}
+                                  className="text-xs px-1.5 py-0.5 rounded border"
+                                  style={{
+                                    backgroundColor: isPreferred ? t.color + "30" : "transparent",
+                                    borderColor: t.color,
+                                    color: t.color,
+                                  }}
+                                >
+                                  {t.name_he}
+                                  {isPreferred && " ★"}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 mr-3">
+                        <select
+                          value={p.proposed_team_id || ""}
+                          onChange={(e) => updateProposal(p.employee_id, parseInt(e.target.value) || null)}
+                          className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          style={proposedTeam ? {
+                            borderColor: proposedTeam.color,
+                            color: proposedTeam.color,
+                            fontWeight: 600,
+                          } : {}}
+                        >
+                          <option value="">— ללא —</option>
+                          {teams.map((t) => {
+                            const isQualified = p.qualified_team_ids?.includes(t.id);
+                            return (
+                              <option key={t.id} value={t.id} disabled={!isQualified}>
+                                {t.name_he} {!isQualified ? "(לא מוסמך)" : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <button
+                          onClick={() => removeProposal(p.employee_id)}
+                          className="p-1 text-slate-400 hover:text-red-500"
+                          title="הסר מהצעה"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {proposals.filter((p) => !p.proposed_team_id).length > 0 && (
+                <p className="text-xs text-amber-600 mt-2">
+                  ⚠ {proposals.filter((p) => !p.proposed_team_id).length} עובדים ללא שיבוץ מוצע (אין מקום או הכשרה מתאימה)
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Unassigned requests (when not in review mode) */}
+          {!proposals && unassignedPrefs.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-slate-700 mb-2">ממתינים לשיבוץ</h4>
+              <div className="space-y-2">
+                {unassignedPrefs.map((pref) => (
                   <div
-                    key={a.employee_id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50"
+                    key={pref.employee_id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold">
-                        {a.employee_name?.[0]}
+                      <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
+                        {pref.employee_name?.[0]}
                       </div>
-                      <span className="text-sm font-medium text-slate-900">{a.employee_name}</span>
-                      <span
-                        className="px-2 py-0.5 rounded text-xs font-medium text-white"
-                        style={{ backgroundColor: teams.find((t) => t.id === a.team_id)?.color || "#666" }}
-                      >
-                        {a.team_name}
-                      </span>
+                      <div>
+                        <span className="text-sm font-medium text-slate-900">{pref.employee_name}</span>
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {teams.map((t) => {
+                            const isQualified = pref.qualified_team_ids?.includes(t.id);
+                            const isPreferred = pref.preferred_team_ids?.includes(t.id);
+                            if (!isQualified) return null;
+                            return (
+                              <span
+                                key={t.id}
+                                className="text-xs px-1.5 py-0.5 rounded border"
+                                style={{
+                                  backgroundColor: isPreferred ? t.color : "transparent",
+                                  borderColor: t.color,
+                                  color: isPreferred ? "white" : t.color,
+                                }}
+                              >
+                                {t.name_he}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleUnassign(a.assignment_id || a.id)}
-                      disabled={assigning}
-                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
-                    >
-                      הסר
-                    </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Requests — unassigned techs */}
-          <div>
-            <h4 className="text-sm font-medium text-slate-700 mb-2">בקשות (לא משובצים)</h4>
-            {selectedPrefs.filter((p) => !assignedEmployeeIds.includes(p.employee_id)).length === 0 ? (
-              <p className="text-sm text-slate-400">
-                {selectedPrefs.length === 0 ? "אין בקשות ליום זה" : "כל המבקשים שובצו"}
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {selectedPrefs
-                  .filter((p) => !assignedEmployeeIds.includes(p.employee_id))
-                  .map((pref) => (
-                    <div
-                      key={pref.employee_id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-slate-200"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
-                          {pref.employee_name?.[0]}
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium text-slate-900">{pref.employee_name}</span>
-                          {pref.preferred_team_ids?.length > 0 && (
-                            <div className="flex gap-1 mt-1">
-                              {pref.preferred_team_ids.map((tid) => {
-                                const team = teams.find((t) => t.id === tid);
-                                return team ? (
-                                  <span
-                                    key={tid}
-                                    className="text-xs px-1.5 py-0.5 rounded"
-                                    style={{ backgroundColor: team.color + "20", color: team.color }}
-                                  >
-                                    {team.name_he}
-                                  </span>
-                                ) : null;
-                              })}
-                            </div>
-                          )}
-                          {pref.notes && (
-                            <p className="text-xs text-slate-400 mt-0.5">{pref.notes}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        {teams.map((t) => (
-                          <button
-                            key={t.id}
-                            onClick={() => handleAssign(pref.employee_id, selectedDate, t.id)}
-                            disabled={assigning}
-                            className="px-3 py-1.5 rounded text-xs font-medium transition-colors hover:text-white disabled:opacity-50"
-                            style={{
-                              backgroundColor: pref.preferred_team_ids?.includes(t.id)
-                                ? t.color
-                                : t.color + "20",
-                              color: pref.preferred_team_ids?.includes(t.id) ? "white" : t.color,
-                            }}
-                            onMouseEnter={(e) => { e.target.style.backgroundColor = t.color; e.target.style.color = "white"; }}
-                            onMouseLeave={(e) => {
-                              const isPref = pref.preferred_team_ids?.includes(t.id);
-                              e.target.style.backgroundColor = isPref ? t.color : t.color + "20";
-                              e.target.style.color = isPref ? "white" : t.color;
-                            }}
-                            title={`שבץ ל${t.name_he}`}
-                          >
-                            {t.name_he}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
+          {!proposals && unassignedPrefs.length === 0 && selectedAssigns.length === 0 && (
+            <p className="text-sm text-slate-400">אין בקשות ליום זה</p>
+          )}
+
+          {!proposals && unassignedPrefs.length === 0 && selectedAssigns.length > 0 && (
+            <p className="text-sm text-green-600">כל המבקשים שובצו ✓</p>
+          )}
         </Card>
         </div>
       )}
