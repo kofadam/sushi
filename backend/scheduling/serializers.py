@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import MonthConfig, TeamMonthCapacity, ShiftPreference, ShiftAssignment
+from core.models import Team
 from core.serializers import TeamSerializer
 
 
@@ -52,7 +53,7 @@ class MonthConfigCreateSerializer(serializers.ModelSerializer):
 class ShiftPreferenceSerializer(serializers.ModelSerializer):
     preferred_team_ids = serializers.PrimaryKeyRelatedField(
         source="preferred_teams", many=True,
-        queryset=__import__("core.models", fromlist=["Team"]).Team.objects.all(),
+        queryset=Team.objects.all(),
         required=False,
     )
     employee_name = serializers.CharField(source="employee.get_full_name", read_only=True)

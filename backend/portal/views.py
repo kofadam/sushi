@@ -18,13 +18,14 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     serializer_class = AnnouncementSerializer
 
     def get_queryset(self):
-        qs = Announcement.objects.filter(is_active=True).select_related("author", "team")
+        from django.db.models import Q
+
         now = timezone.now()
-        qs = qs.filter(
-            models__isnull=True  # no expiry
-        ) | qs.filter(expires_at__gt=now)
-        # Filter would be complex, simplify:
-        return Announcement.objects.filter(is_active=True).select_related("author", "team")
+        return (
+            Announcement.objects.filter(is_active=True)
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .select_related("author", "team")
+        )
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:

@@ -5,7 +5,10 @@ import {
   Layout, PageHeader, Card, Button, Badge,
   LoadingSpinner, EmptyState,
 } from "../components/UI";
-import { CalendarDays, Check, Send, Eye } from "lucide-react";
+import {
+  CalendarDays, Check, Send, Eye, Plus, Settings,
+  X, ToggleLeft, ToggleRight, Globe,
+} from "lucide-react";
 import { getWorkingDaysForMonth, getDayNameHe, getMonthNameHe, isToday } from "../utils/dates";
 
 export default function SchedulePage() {
@@ -18,17 +21,26 @@ export default function SchedulePage() {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [view, setView] = useState("preferences"); // preferences | assignments | manage
+  const [view, setView] = useState("preferences");
+  const [showCreateMonth, setShowCreateMonth] = useState(false);
+  const [showMonthSettings, setShowMonthSettings] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
+  const loadMonths = async () => {
+    const [monthData, teamData] = await Promise.all([
       api.get("/months/"),
       api.get("/teams/"),
-    ]).then(([monthData, teamData]) => {
-      setMonths(monthData.results || []);
-      setTeams(teamData.results || []);
-      if (monthData.results?.length > 0) {
-        setSelectedMonth(monthData.results[0]);
+    ]);
+    const monthList = monthData.results || [];
+    const teamList = teamData.results || [];
+    setMonths(monthList);
+    setTeams(teamList);
+    return { monthList, teamList };
+  };
+
+  useEffect(() => {
+    loadMonths().then(({ monthList }) => {
+      if (monthList.length > 0) {
+        setSelectedMonth(monthList[0]);
       }
       setLoading(false);
     });
@@ -46,7 +58,6 @@ export default function SchedulePage() {
         api.get(`/preferences/?month_config=${selectedMonth.id}`),
         api.get(`/assignments/?month_config=${selectedMonth.id}`),
       ]);
-      // Build preferences map: date -> { preferred_team_ids, notes }
       const prefMap = {};
       for (const p of prefData.results || []) {
         prefMap[p.date] = {
@@ -57,7 +68,6 @@ export default function SchedulePage() {
       setPreferences(prefMap);
       setAssignments(assignData.results || []);
 
-      // Load dashboard for managers
       if (hasPerm("manage_schedule")) {
         const dash = await api.get(`/months/${selectedMonth.id}/dashboard/`);
         setDashboardData(dash);
@@ -65,6 +75,21 @@ export default function SchedulePage() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleMonthCreated = async (newMonth) => {
+    const { monthList } = await loadMonths();
+    const created = monthList.find((m) => m.id === newMonth.id);
+    if (created) setSelectedMonth(created);
+    setShowCreateMonth(false);
+  };
+
+  const handleMonthUpdated = async () => {
+    const { monthList } = await loadMonths();
+    const updated = monthList.find((m) => m.id === selectedMonth.id);
+    if (updated) setSelectedMonth(updated);
+    setShowMonthSettings(false);
+    loadMonthData();
   };
 
   const toggleDatePreference = (dateStr) => {
@@ -84,17 +109,11 @@ export default function SchedulePage() {
     setPreferences((prev) => {
       const copy = { ...prev };
       if (!copy[dateStr]) return copy;
-      const teams = copy[dateStr].preferred_team_ids || [];
-      if (teams.includes(teamId)) {
-        copy[dateStr] = {
-          ...copy[dateStr],
-          preferred_team_ids: teams.filter((t) => t !== teamId),
-        };
+      const t = copy[dateStr].preferred_team_ids || [];
+      if (t.includes(teamId)) {
+        copy[dateStr] = { ...copy[dateStr], preferred_team_ids: t.filter((x) => x !== teamId) };
       } else {
-        copy[dateStr] = {
-          ...copy[dateStr],
-          preferred_team_ids: [...teams, teamId],
-        };
+        copy[dateStr] = { ...copy[dateStr], preferred_team_ids: [...t, teamId] };
       }
       return copy;
     });
@@ -122,11 +141,7 @@ export default function SchedulePage() {
   };
 
   if (loading) {
-    return (
-      <Layout>
-        <LoadingSpinner />
-      </Layout>
-    );
+    return <Layout><LoadingSpinner /></Layout>;
   }
 
   const workingDays = selectedMonth
@@ -171,7 +186,7 @@ export default function SchedulePage() {
       />
 
       {/* Month selector */}
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="flex gap-2 mb-6 flex-wrap items-center">
         {months.map((m) => (
           <button
             key={m.id}
@@ -188,18 +203,48 @@ export default function SchedulePage() {
             )}
           </button>
         ))}
-        {months.length === 0 && (
+
+        {hasPerm("manage_schedule") && (
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setShowCreateMonth(true)}>
+              <Plus size={16} />
+              חודש חדש
+            </Button>
+            {selectedMonth && (
+              <Button variant="ghost" size="sm" onClick={() => setShowMonthSettings(true)}>
+                <Settings size={16} />
+              </Button>
+            )}
+          </>
+        )}
+
+        {months.length === 0 && !hasPerm("manage_schedule") && (
           <EmptyState
             icon={CalendarDays}
             title="אין חודשים מוגדרים"
-            description={
-              hasPerm("manage_schedule")
-                ? "צור תצורת חודש חדשה כדי להתחיל"
-                : "מנהלת הצוות עדיין לא פתחה חודש להגשת בקשות"
-            }
+            description="מנהלת הצוות עדיין לא פתחה חודש להגשת בקשות"
           />
         )}
       </div>
+
+      {/* Create Month Modal */}
+      {showCreateMonth && (
+        <CreateMonthModal
+          teams={teams}
+          onClose={() => setShowCreateMonth(false)}
+          onCreated={handleMonthCreated}
+        />
+      )}
+
+      {/* Month Settings Modal */}
+      {showMonthSettings && selectedMonth && (
+        <MonthSettingsModal
+          monthConfig={selectedMonth}
+          teams={teams}
+          onClose={() => setShowMonthSettings(false)}
+          onUpdated={handleMonthUpdated}
+        />
+      )}
 
       {selectedMonth && view === "preferences" && (
         <PreferencesView
@@ -237,6 +282,273 @@ export default function SchedulePage() {
   );
 }
 
+/* ============================================
+   Create Month Modal
+   ============================================ */
+function CreateMonthModal({ teams, onClose, onCreated }) {
+  const now = new Date();
+  const nextMonth = now.getMonth() + 2; // JS months are 0-indexed, we want next month
+  const nextYear = nextMonth > 12 ? now.getFullYear() + 1 : now.getFullYear();
+  const adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
+
+  const [form, setForm] = useState({
+    year: nextYear,
+    month: adjustedMonth,
+    notes: "",
+    is_open_for_submissions: true,
+    team_seats: teams.map((t) => ({ team_id: t.id, seats_per_day: 10 })),
+  });
+  const [saving, setSaving] = useState(false);
+
+  const updateSeat = (teamId, value) => {
+    setForm((prev) => ({
+      ...prev,
+      team_seats: prev.team_seats.map((ts) =>
+        ts.team_id === teamId ? { ...ts, seats_per_day: parseInt(value) || 0 } : ts
+      ),
+    }));
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      const created = await api.post("/months/", form);
+      onCreated(created);
+    } catch (err) {
+      alert("שגיאה: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <Card className="w-full max-w-lg p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-slate-900">חודש חדש</h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Year + Month */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">שנה</label>
+              <input
+                type="number"
+                value={form.year}
+                onChange={(e) => setForm({ ...form, year: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">חודש</label>
+              <select
+                value={form.month}
+                onChange={(e) => setForm({ ...form, month: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                  <option key={m} value={m}>{getMonthNameHe(m)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Team capacities */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">מקומות לצוות ליום</label>
+            <div className="space-y-2">
+              {teams.map((t) => {
+                const seat = form.team_seats.find((ts) => ts.team_id === t.id);
+                return (
+                  <div key={t.id} className="flex items-center gap-3">
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: t.color }}
+                    />
+                    <span className="text-sm text-slate-700 flex-1">{t.name_he}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={50}
+                      value={seat?.seats_per_day ?? 10}
+                      onChange={(e) => updateSeat(t.id, e.target.value)}
+                      className="w-20 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">הערות</label>
+            <input
+              type="text"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              placeholder="הערות לחודש (אופציונלי)"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+
+          {/* Open for submissions */}
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_open_for_submissions}
+              onChange={(e) => setForm({ ...form, is_open_for_submissions: e.target.checked })}
+              className="rounded"
+            />
+            פתוח להגשת בקשות מיד
+          </label>
+
+          {/* Actions */}
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="secondary" onClick={onClose}>ביטול</Button>
+            <Button onClick={handleSubmit} disabled={saving}>
+              {saving ? "יוצר..." : "צור חודש"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ============================================
+   Month Settings Modal
+   ============================================ */
+function MonthSettingsModal({ monthConfig, teams, onClose, onUpdated }) {
+  const [isOpen, setIsOpen] = useState(monthConfig.is_open_for_submissions);
+  const [isPublished, setIsPublished] = useState(monthConfig.is_published);
+  const [capacities, setCapacities] = useState(
+    teams.map((t) => {
+      const existing = monthConfig.team_capacities?.find((tc) => tc.team === t.id);
+      return {
+        team_id: t.id,
+        seats_per_day: existing?.seats_per_day ?? 10,
+      };
+    })
+  );
+  const [saving, setSaving] = useState(false);
+
+  const updateCap = (teamId, value) => {
+    setCapacities((prev) =>
+      prev.map((c) => (c.team_id === teamId ? { ...c, seats_per_day: parseInt(value) || 0 } : c))
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Update month config toggles
+      await api.patch(`/months/${monthConfig.id}/`, {
+        is_open_for_submissions: isOpen,
+        is_published: isPublished,
+      });
+      // Update capacities
+      await api.patch(`/months/${monthConfig.id}/set_capacities/`, {
+        team_seats: capacities,
+      });
+      onUpdated();
+    } catch (err) {
+      alert("שגיאה: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <Card className="w-full max-w-lg p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-slate-900">
+            הגדרות — {getMonthNameHe(monthConfig.month)} {monthConfig.year}
+          </h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-5">
+          {/* Toggles */}
+          <div className="space-y-3">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="flex items-center justify-between w-full p-3 rounded-lg border border-slate-200 hover:bg-slate-50"
+            >
+              <div className="text-right">
+                <p className="text-sm font-medium text-slate-900">פתוח להגשת בקשות</p>
+                <p className="text-xs text-slate-500">טכנאים יכולים לשלוח העדפות</p>
+              </div>
+              {isOpen ? (
+                <ToggleRight size={28} className="text-brand-600" />
+              ) : (
+                <ToggleLeft size={28} className="text-slate-400" />
+              )}
+            </button>
+
+            <button
+              onClick={() => setIsPublished(!isPublished)}
+              className="flex items-center justify-between w-full p-3 rounded-lg border border-slate-200 hover:bg-slate-50"
+            >
+              <div className="text-right">
+                <p className="text-sm font-medium text-slate-900">לוח פורסם</p>
+                <p className="text-xs text-slate-500">כל העובדים רואים את השיבוצים</p>
+              </div>
+              {isPublished ? (
+                <Globe size={22} className="text-green-600" />
+              ) : (
+                <Globe size={22} className="text-slate-400" />
+              )}
+            </button>
+          </div>
+
+          {/* Capacities */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">מקומות לצוות ליום</label>
+            <div className="space-y-2">
+              {teams.map((t) => {
+                const cap = capacities.find((c) => c.team_id === t.id);
+                return (
+                  <div key={t.id} className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color }} />
+                    <span className="text-sm text-slate-700 flex-1">{t.name_he}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={50}
+                      value={cap?.seats_per_day ?? 10}
+                      onChange={(e) => updateCap(t.id, e.target.value)}
+                      className="w-20 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="secondary" onClick={onClose}>ביטול</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "שומר..." : "שמור"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ============================================
+   Preferences View (Tech)
+   ============================================ */
 function PreferencesView({
   workingDays, teams, preferences, isOpen,
   onToggleDate, onToggleTeam, onSubmit, saving, qualifiedTeams,
@@ -300,9 +612,7 @@ function PreferencesView({
               >
                 <div
                   className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                    selected
-                      ? "border-brand-600 bg-brand-600"
-                      : "border-slate-300"
+                    selected ? "border-brand-600 bg-brand-600" : "border-slate-300"
                   }`}
                 >
                   {selected && <Check size={12} className="text-white" />}
@@ -348,6 +658,9 @@ function PreferencesView({
   );
 }
 
+/* ============================================
+   Assignments View (Published schedule)
+   ============================================ */
 function AssignmentsView({ workingDays, assignments, allAssignments, teams, isPublished }) {
   const assignmentsByDate = {};
   for (const a of allAssignments.length > 0 ? allAssignments : assignments) {
@@ -407,6 +720,9 @@ function AssignmentsView({ workingDays, assignments, allAssignments, teams, isPu
   );
 }
 
+/* ============================================
+   Manager View (Dashboard)
+   ============================================ */
 function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
   if (!dashboardData) return <LoadingSpinner />;
 
