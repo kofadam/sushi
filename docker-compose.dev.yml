@@ -1,0 +1,14 @@
+# Use this for development: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# This runs the frontend via Vite dev server (hot reload) instead of nginx.
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
