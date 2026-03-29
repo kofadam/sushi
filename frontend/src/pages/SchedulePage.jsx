@@ -38,13 +38,18 @@ export default function SchedulePage() {
   };
 
   useEffect(() => {
+    setPreferences({});
+    setAssignments([]);
+    setDashboardData(null);
+    setSelectedMonth(null);
+    setLoading(true);
     loadMonths().then(({ monthList }) => {
       if (monthList.length > 0) {
         setSelectedMonth(monthList[0]);
       }
       setLoading(false);
     });
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!selectedMonth) return;
