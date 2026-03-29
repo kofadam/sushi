@@ -120,6 +120,11 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    "CSRF_TRUSTED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:8000"
+).split(",")
+
 # Static
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
