@@ -769,8 +769,9 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
       if (alreadyAssignedIds.includes(pref.employee_id)) continue;
 
       let assignedTeamId = null;
+      const hasPreference = (pref.preferred_team_ids || []).length > 0;
 
-      // 1. Try preferred team with capacity
+      // 1. Try preferred teams only (respecting capacity)
       for (const tid of (pref.preferred_team_ids || [])) {
         if (pref.qualified_team_ids?.includes(tid) && remaining[tid] > 0) {
           assignedTeamId = tid;
@@ -778,8 +779,8 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
         }
       }
 
-      // 2. Fallback: any qualified team with capacity
-      if (!assignedTeamId) {
+      // 2. Only fallback to other qualified teams if tech had NO preference
+      if (!assignedTeamId && !hasPreference) {
         for (const tid of (pref.qualified_team_ids || [])) {
           if (remaining[tid] > 0) {
             assignedTeamId = tid;
@@ -1082,14 +1083,24 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
                           } : {}}
                         >
                           <option value="">— ללא —</option>
-                          {teams.map((t) => {
-                            const isQualified = p.qualified_team_ids?.includes(t.id);
-                            return (
-                              <option key={t.id} value={t.id} disabled={!isQualified}>
-                                {t.name_he} {!isQualified ? "(לא מוסמך)" : ""}
-                              </option>
-                            );
-                          })}
+                          {p.preferred_team_ids.length > 0 && (
+                            <optgroup label="ביקש/ה">
+                              {teams.filter((t) => p.preferred_team_ids.includes(t.id)).map((t) => (
+                                <option key={t.id} value={t.id}>★ {t.name_he}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {teams.filter((t) =>
+                            p.qualified_team_ids?.includes(t.id) && !p.preferred_team_ids.includes(t.id)
+                          ).length > 0 && (
+                            <optgroup label="מוסמך/ת (לא ביקש/ה)">
+                              {teams.filter((t) =>
+                                p.qualified_team_ids?.includes(t.id) && !p.preferred_team_ids.includes(t.id)
+                              ).map((t) => (
+                                <option key={t.id} value={t.id}>{t.name_he}</option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                         <button
                           onClick={() => removeProposal(p.employee_id)}
