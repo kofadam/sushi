@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../api/client";
 import {
@@ -735,6 +735,13 @@ function AssignmentsView({ workingDays, assignments, allAssignments, teams, isPu
 function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [assigning, setAssigning] = useState(false);
+  const assignPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (selectedDate && assignPanelRef.current) {
+      assignPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedDate]);
 
   if (!dashboardData) return <LoadingSpinner />;
 
@@ -861,6 +868,7 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
 
       {/* Assignment panel for selected date */}
       {selectedDate && (
+        <div ref={assignPanelRef}>
         <Card className="p-6 animate-fade-in">
           <h3 className="font-semibold text-slate-900 mb-1">
             שיבוץ — {getDayNameHe(selectedDate)} {new Date(selectedDate + "T00:00:00").getDate()}/{new Date(selectedDate + "T00:00:00").getMonth() + 1}
@@ -978,6 +986,7 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
             )}
           </div>
         </Card>
+        </div>
       )}
     </div>
   );
