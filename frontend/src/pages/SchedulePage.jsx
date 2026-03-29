@@ -63,8 +63,12 @@ export default function SchedulePage() {
         api.get(`/preferences/?month_config=${selectedMonth.id}`),
         api.get(`/assignments/?month_config=${selectedMonth.id}`),
       ]);
+      // Only show current user's preferences in the preferences view
+      const myPrefs = (prefData.results || []).filter(
+        (p) => p.employee === user?.id
+      );
       const prefMap = {};
-      for (const p of prefData.results || []) {
+      for (const p of myPrefs) {
         prefMap[p.date] = {
           preferred_team_ids: p.preferred_team_ids || [],
           notes: p.notes || "",
