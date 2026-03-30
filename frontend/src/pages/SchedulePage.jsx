@@ -331,8 +331,8 @@ function CreateMonthModal({ teams, onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <Card className="w-full max-w-lg p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <Card className="w-full max-w-lg p-6 animate-fade-in" >
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-slate-900">חודש חדש</h3>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
@@ -473,8 +473,8 @@ function MonthSettingsModal({ monthConfig, teams, onClose, onUpdated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <Card className="w-full max-w-lg p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <Card className="w-full max-w-lg p-6 animate-fade-in" >
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-slate-900">
             הגדרות — {getMonthNameHe(monthConfig.month)} {monthConfig.year}
