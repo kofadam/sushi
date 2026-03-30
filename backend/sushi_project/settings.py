@@ -147,13 +147,19 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(",") if o.strip()
 ]
 
-# Cookie security — enable secure cookies when not in debug mode
-if not DEBUG:
-    CSRF_COOKIE_SECURE = True
-    SESSION_COOKIE_SECURE = True
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Cookie and proxy settings
+# Detect Railway by DATABASE_URL (Railway always sets this)
+IS_RAILWAY = bool(os.environ.get("DATABASE_URL"))
 
-# Ensure CSRF cookie is readable by JavaScript (for the API client)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Session and CSRF cookies — must be Secure on HTTPS (Railway)
+SESSION_COOKIE_SECURE = IS_RAILWAY or not DEBUG
+CSRF_COOKIE_SECURE = IS_RAILWAY or not DEBUG
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Ensure CSRF cookie is readable by JavaScript
 CSRF_COOKIE_HTTPONLY = False
 
 # Static
