@@ -60,16 +60,33 @@ TEMPLATES = [
 WSGI_APPLICATION = "sushi_project.wsgi.application"
 
 # Database
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("DB_NAME", "sushi"),
-        "USER": os.environ.get("DB_USER", "sushi"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", "sushi"),
-        "HOST": os.environ.get("DB_HOST", "localhost"),
-        "PORT": os.environ.get("DB_PORT", "5432"),
+# Support DATABASE_URL (Railway/Heroku) or individual vars (Docker/local)
+import urllib.parse
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    url = urllib.parse.urlparse(DATABASE_URL)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": url.path[1:],
+            "USER": url.username,
+            "PASSWORD": url.password,
+            "HOST": url.hostname,
+            "PORT": url.port or 5432,
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DB_NAME", "sushi"),
+            "USER": os.environ.get("DB_USER", "sushi"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", "sushi"),
+            "HOST": os.environ.get("DB_HOST", "localhost"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+        }
+    }
 
 # Auth
 AUTH_USER_MODEL = "core.User"
@@ -115,15 +132,20 @@ REST_FRAMEWORK = {
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173"
-).split(",")
+_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+if "*" in _cors_origins:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(",") if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF
-CSRF_TRUSTED_ORIGINS = os.environ.get(
-    "CSRF_TRUSTED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:8000"
-).split(",")
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://localhost:5173,http://localhost:3000,http://localhost:8000"
+    ).split(",") if o.strip()
+]
 
 # Static
 STATIC_URL = "static/"
