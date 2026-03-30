@@ -791,16 +791,17 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
 
   const { working_days, preferences_by_date, assignments_by_date, capacities } = dashboardData;
 
-  // Auto-assign logic: propose assignments based on preferences
-  // Spreads techs across teams to balance coverage
+  // Auto-assign logic: constraint-satisfaction approach
+  // 1. Sort techs by flexibility (fewest options first — most constrained assigned first)
+  // 2. Within each tech, pick the team with lowest current load
+  // This ensures techs with only one option get their slot before flexible techs fill it
   const generateProposals = (dateStr) => {
     const prefs = preferences_by_date[dateStr] || [];
     const assigns = assignments_by_date[dateStr] || [];
     const alreadyAssignedIds = assigns.map((a) => a.employee_id);
 
-    // Track remaining capacity per team
+    // Track remaining capacity and load per team
     const remaining = {};
-    // Track how many people are assigned to each team (existing + proposed in this batch)
     const teamLoad = {};
     for (const t of teams) {
       const cap = capacities[t.id] || 0;
@@ -809,46 +810,56 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
       teamLoad[t.id] = filled;
     }
 
-    const result = [];
-    for (const pref of prefs) {
-      if (alreadyAssignedIds.includes(pref.employee_id)) continue;
+    // Build candidate list with their available team options
+    const candidates = prefs
+      .filter((p) => !alreadyAssignedIds.includes(p.employee_id))
+      .map((pref) => {
+        const prefTeams = pref.preferred_team_ids || [];
+        const qualTeams = pref.qualified_team_ids || [];
+        // Requested teams the tech is qualified for
+        const requestedOptions = prefTeams.filter((tid) => qualTeams.includes(tid));
+        // All qualified teams (fallback if no preference)
+        const allOptions = prefTeams.length > 0 ? requestedOptions : qualTeams;
 
-      let assignedTeamId = null;
-      const prefTeams = pref.preferred_team_ids || [];
-      const qualTeams = pref.qualified_team_ids || [];
-      const hasPreference = prefTeams.length > 0;
+        return {
+          ...pref,
+          prefTeams,
+          qualTeams,
+          requestedOptions,
+          allOptions,
+          flexibility: allOptions.length, // fewer = more constrained
+        };
+      })
+      // Sort: most constrained first (fewest options), then by employee_id for stability
+      .sort((a, b) => a.flexibility - b.flexibility || a.employee_id - b.employee_id);
 
-      // 1. Try preferred teams — pick the one with LOWEST current load (spread evenly)
-      if (hasPreference) {
-        const validPrefTeams = prefTeams
-          .filter((tid) => qualTeams.includes(tid) && remaining[tid] > 0)
-          .sort((a, b) => teamLoad[a] - teamLoad[b]);
-        if (validPrefTeams.length > 0) {
-          assignedTeamId = validPrefTeams[0];
-        }
-      }
+    // Assign in constraint order
+    const assignments = new Map();
+    for (const cand of candidates) {
+      const validTeams = cand.allOptions
+        .filter((tid) => remaining[tid] > 0)
+        .sort((a, b) => teamLoad[a] - teamLoad[b]); // lowest load first
 
-      // 2. Only fallback to other qualified teams if tech had NO preference
-      if (!assignedTeamId && !hasPreference) {
-        const validQualTeams = qualTeams
-          .filter((tid) => remaining[tid] > 0)
-          .sort((a, b) => teamLoad[a] - teamLoad[b]);
-        if (validQualTeams.length > 0) {
-          assignedTeamId = validQualTeams[0];
-        }
-      }
+      const assignedTeamId = validTeams.length > 0 ? validTeams[0] : null;
 
       if (assignedTeamId) {
         remaining[assignedTeamId]--;
         teamLoad[assignedTeamId]++;
       }
 
+      assignments.set(cand.employee_id, assignedTeamId);
+    }
+
+    // Build result in ORIGINAL preference order (so UI order matches request order)
+    const result = [];
+    for (const pref of prefs) {
+      if (alreadyAssignedIds.includes(pref.employee_id)) continue;
       result.push({
         employee_id: pref.employee_id,
         employee_name: pref.employee_name,
         preferred_team_ids: pref.preferred_team_ids || [],
         qualified_team_ids: pref.qualified_team_ids || [],
-        proposed_team_id: assignedTeamId,
+        proposed_team_id: assignments.get(pref.employee_id) || null,
         notes: pref.notes,
       });
     }
