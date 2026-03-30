@@ -156,6 +156,10 @@ STORAGES = {
     },
 }
 
+# Frontend SPA — served by WhiteNoise from the built React app
+FRONTEND_DIR = BASE_DIR / "frontend_dist"
+WHITENOISE_ROOT = FRONTEND_DIR if FRONTEND_DIR.exists() else None
+
 # Internationalization
 LANGUAGE_CODE = "he"
 TIME_ZONE = "Asia/Jerusalem"

@@ -1,5 +1,6 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
+from django.conf import settings
 from rest_framework.routers import DefaultRouter
 from core.views import me_view, UserViewSet, RoleViewSet, PermissionViewSet, TeamViewSet
 from scheduling.views import MonthConfigViewSet, ShiftPreferenceViewSet, ShiftAssignmentViewSet
@@ -29,4 +30,25 @@ urlpatterns = [
     path("api/auth/logout/", logout_view, name="logout"),
     # OIDC (mozilla-django-oidc)
     path("oidc/", include("mozilla_django_oidc.urls")),
+]
+
+# SPA catch-all: serve index.html for any non-API, non-static route
+# This lets React Router handle client-side routing
+from pathlib import Path
+from django.http import HttpResponse
+
+_index_html = None
+
+def spa_view(request):
+    global _index_html
+    index_path = Path(settings.BASE_DIR) / "frontend_dist" / "index.html"
+    if _index_html is None:
+        if index_path.exists():
+            _index_html = index_path.read_text()
+        else:
+            _index_html = "<h1>Frontend not built</h1><p>Run npm build in frontend/</p>"
+    return HttpResponse(_index_html, content_type="text/html")
+
+urlpatterns += [
+    re_path(r"^(?!api/|admin/|oidc/|static/).*$", spa_view),
 ]
