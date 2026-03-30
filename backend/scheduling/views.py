@@ -143,6 +143,185 @@ class MonthConfigViewSet(viewsets.ModelViewSet):
             "special_days": special_days,
         })
 
+    @action(detail=True, methods=["get"])
+    def reports(self, request, pk=None):
+        """
+        Aggregated report data for a month:
+        - Per day per team: requests, assigned, capacity, fill rate
+        - Alerts for understaffed days
+        - Request vs capacity comparison
+        - Techs who haven't submitted preferences
+        """
+        config = self.get_object()
+        num_days = calendar.monthrange(config.year, config.month)[1]
+
+        capacities = {
+            tc.team_id: tc.seats_per_day
+            for tc in config.team_capacities.all()
+        }
+
+        teams_qs = Team.objects.filter(is_active=True)
+        teams = list(teams_qs.values("id", "name_he", "color"))
+
+        # Working days (Sun-Thu)
+        working_days = []
+        for day in range(1, num_days + 1):
+            d = date(config.year, config.month, day)
+            if d.weekday() in (6, 0, 1, 2, 3):
+                working_days.append(d.isoformat())
+
+        # Special days
+        special_days_map = {}
+        for sd in SpecialDay.objects.filter(
+            date__year=config.year, date__month=config.month
+        ):
+            special_days_map[sd.date.isoformat()] = {
+                "day_type": sd.day_type,
+                "note": sd.note,
+                "capacity_percent": sd.capacity_percent,
+            }
+
+        # Preferences
+        preferences = (
+            ShiftPreference.objects
+            .filter(month_config=config)
+            .select_related("employee")
+            .prefetch_related("preferred_teams")
+        )
+        prefs_by_date = {}
+        prefs_by_team_date = {}
+        all_requesters = set()
+        for pref in preferences:
+            ds = pref.date.isoformat()
+            all_requesters.add(pref.employee_id)
+            if ds not in prefs_by_date:
+                prefs_by_date[ds] = 0
+            prefs_by_date[ds] += 1
+            for t in pref.preferred_teams.all():
+                key = f"{ds}_{t.id}"
+                prefs_by_team_date[key] = prefs_by_team_date.get(key, 0) + 1
+
+        # Assignments
+        assignments = (
+            ShiftAssignment.objects
+            .filter(month_config=config)
+            .select_related("team")
+        )
+        assigns_by_date = {}
+        assigns_by_team_date = {}
+        for a in assignments:
+            ds = a.date.isoformat()
+            if ds not in assigns_by_date:
+                assigns_by_date[ds] = 0
+            assigns_by_date[ds] += 1
+            key = f"{ds}_{a.team_id}"
+            assigns_by_team_date[key] = assigns_by_team_date.get(key, 0) + 1
+
+        # Build daily coverage data
+        daily_coverage = []
+        alerts = []
+        total_capacity = sum(capacities.values())
+
+        for ds in working_days:
+            sd = special_days_map.get(ds)
+            if sd and sd["day_type"] == "off":
+                continue
+
+            cap_modifier = 1.0
+            if sd and sd["day_type"] == "reduced":
+                cap_modifier = sd["capacity_percent"] / 100.0
+
+            day_data = {
+                "date": ds,
+                "special": sd,
+                "total_requests": prefs_by_date.get(ds, 0),
+                "total_assigned": assigns_by_date.get(ds, 0),
+                "total_capacity": int(total_capacity * cap_modifier),
+                "teams": [],
+            }
+
+            for t in teams:
+                tid = t["id"]
+                key = f"{ds}_{tid}"
+                cap = int((capacities.get(tid, 0)) * cap_modifier)
+                assigned = assigns_by_team_date.get(key, 0)
+                requested = prefs_by_team_date.get(key, 0)
+                fill_pct = round(assigned / cap * 100) if cap > 0 else 0
+
+                day_data["teams"].append({
+                    "team_id": tid,
+                    "team_name": t["name_he"],
+                    "color": t["color"],
+                    "capacity": cap,
+                    "assigned": assigned,
+                    "requested": requested,
+                    "fill_percent": fill_pct,
+                })
+
+                # Alerts
+                if cap > 0 and assigned == 0 and ds >= date.today().isoformat():
+                    alerts.append({
+                        "type": "no_coverage",
+                        "severity": "high",
+                        "date": ds,
+                        "team": t["name_he"],
+                        "message": f"{t['name_he']} ביום {ds} — 0 משובצים מתוך {cap}",
+                    })
+                elif cap > 0 and fill_pct < 50 and ds >= date.today().isoformat():
+                    alerts.append({
+                        "type": "low_coverage",
+                        "severity": "medium",
+                        "date": ds,
+                        "team": t["name_he"],
+                        "message": f"{t['name_he']} ביום {ds} — {assigned}/{cap} ({fill_pct}%)",
+                    })
+
+            daily_coverage.append(day_data)
+
+        # Request vs capacity per team (aggregate for the month)
+        team_summary = []
+        for t in teams:
+            tid = t["id"]
+            total_req = sum(
+                prefs_by_team_date.get(f"{ds}_{tid}", 0) for ds in working_days
+            )
+            total_assign = sum(
+                assigns_by_team_date.get(f"{ds}_{tid}", 0) for ds in working_days
+            )
+            total_cap = (capacities.get(tid, 0)) * len(working_days)
+            team_summary.append({
+                "team_id": tid,
+                "team_name": t["name_he"],
+                "color": t["color"],
+                "total_requests": total_req,
+                "total_assigned": total_assign,
+                "total_capacity": total_cap,
+                "fill_percent": round(total_assign / total_cap * 100) if total_cap > 0 else 0,
+            })
+
+        # Techs who haven't submitted preferences
+        from core.models import User
+        active_techs = User.objects.filter(
+            is_active=True, is_active_employee=True
+        ).exclude(role__permissions__codename="manage_schedule")
+        missing_prefs = []
+        for tech in active_techs:
+            if tech.id not in all_requesters:
+                missing_prefs.append({
+                    "id": tech.id,
+                    "name": tech.get_full_name(),
+                })
+
+        return Response({
+            "month_config": MonthConfigSerializer(config).data,
+            "teams": teams,
+            "daily_coverage": daily_coverage,
+            "alerts": sorted(alerts, key=lambda a: (a["date"], a["severity"])),
+            "team_summary": team_summary,
+            "missing_preferences": missing_prefs,
+            "total_working_days": len([d for d in working_days if d not in special_days_map or special_days_map[d]["day_type"] != "off"]),
+        })
+
 
 class ShiftPreferenceViewSet(viewsets.ModelViewSet):
     serializer_class = ShiftPreferenceSerializer
