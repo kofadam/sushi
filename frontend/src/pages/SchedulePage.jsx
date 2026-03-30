@@ -792,6 +792,7 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
   const { working_days, preferences_by_date, assignments_by_date, capacities } = dashboardData;
 
   // Auto-assign logic: propose assignments based on preferences
+  // Spreads techs across teams to balance coverage
   const generateProposals = (dateStr) => {
     const prefs = preferences_by_date[dateStr] || [];
     const assigns = assignments_by_date[dateStr] || [];
@@ -810,23 +811,27 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
       if (alreadyAssignedIds.includes(pref.employee_id)) continue;
 
       let assignedTeamId = null;
-      const hasPreference = (pref.preferred_team_ids || []).length > 0;
+      const prefTeams = pref.preferred_team_ids || [];
+      const qualTeams = pref.qualified_team_ids || [];
+      const hasPreference = prefTeams.length > 0;
 
-      // 1. Try preferred teams only (respecting capacity)
-      for (const tid of (pref.preferred_team_ids || [])) {
-        if (pref.qualified_team_ids?.includes(tid) && remaining[tid] > 0) {
-          assignedTeamId = tid;
-          break;
+      // 1. Try preferred teams — pick the one with MOST remaining capacity (spread load)
+      if (hasPreference) {
+        const validPrefTeams = prefTeams
+          .filter((tid) => qualTeams.includes(tid) && remaining[tid] > 0)
+          .sort((a, b) => remaining[b] - remaining[a]);
+        if (validPrefTeams.length > 0) {
+          assignedTeamId = validPrefTeams[0];
         }
       }
 
       // 2. Only fallback to other qualified teams if tech had NO preference
       if (!assignedTeamId && !hasPreference) {
-        for (const tid of (pref.qualified_team_ids || [])) {
-          if (remaining[tid] > 0) {
-            assignedTeamId = tid;
-            break;
-          }
+        const validQualTeams = qualTeams
+          .filter((tid) => remaining[tid] > 0)
+          .sort((a, b) => remaining[b] - remaining[a]);
+        if (validQualTeams.length > 0) {
+          assignedTeamId = validQualTeams[0];
         }
       }
 

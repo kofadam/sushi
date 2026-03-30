@@ -28,8 +28,14 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    await api.post("/auth/logout/", {});
+    try {
+      await api.post("/auth/logout/", {});
+    } catch {
+      // ignore errors
+    }
     setUser(null);
+    // Force full page reload to clear all cached state
+    window.location.href = "/login";
   };
 
   const hasPerm = (codename) => {

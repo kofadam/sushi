@@ -75,9 +75,6 @@ export default function LoginPage() {
     { username: "teamlead1", label: "דוד לוי", role: "אחראי משמרת" },
     { username: "senior1", label: "יוסי מזרחי", role: "טכנאי בכיר" },
     { username: "tech1", label: "רונית אברהם", role: "טכנאי" },
-    { username: "tech2", label: "עמית פרץ", role: "טכנאי" },
-    { username: "tech3", label: "מיכל גולן", role: "טכנאי" },
-    { username: "tech4", label: "אורי שלום", role: "טכנאי" },
   ];
 
   return (
