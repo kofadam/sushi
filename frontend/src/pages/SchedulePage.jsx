@@ -800,10 +800,13 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
 
     // Track remaining capacity per team
     const remaining = {};
+    // Track how many people are assigned to each team (existing + proposed in this batch)
+    const teamLoad = {};
     for (const t of teams) {
       const cap = capacities[t.id] || 0;
       const filled = assigns.filter((a) => a.team_id === t.id).length;
       remaining[t.id] = cap - filled;
+      teamLoad[t.id] = filled;
     }
 
     const result = [];
@@ -815,11 +818,11 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
       const qualTeams = pref.qualified_team_ids || [];
       const hasPreference = prefTeams.length > 0;
 
-      // 1. Try preferred teams — pick the one with MOST remaining capacity (spread load)
+      // 1. Try preferred teams — pick the one with LOWEST current load (spread evenly)
       if (hasPreference) {
         const validPrefTeams = prefTeams
           .filter((tid) => qualTeams.includes(tid) && remaining[tid] > 0)
-          .sort((a, b) => remaining[b] - remaining[a]);
+          .sort((a, b) => teamLoad[a] - teamLoad[b]);
         if (validPrefTeams.length > 0) {
           assignedTeamId = validPrefTeams[0];
         }
@@ -829,7 +832,7 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
       if (!assignedTeamId && !hasPreference) {
         const validQualTeams = qualTeams
           .filter((tid) => remaining[tid] > 0)
-          .sort((a, b) => remaining[b] - remaining[a]);
+          .sort((a, b) => teamLoad[a] - teamLoad[b]);
         if (validQualTeams.length > 0) {
           assignedTeamId = validQualTeams[0];
         }
@@ -837,6 +840,7 @@ function ManagerView({ dashboardData, selectedMonth, teams, onRefresh }) {
 
       if (assignedTeamId) {
         remaining[assignedTeamId]--;
+        teamLoad[assignedTeamId]++;
       }
 
       result.push({
