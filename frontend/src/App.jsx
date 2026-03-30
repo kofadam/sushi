@@ -11,6 +11,7 @@ import UsersPage from "./pages/UsersPage";
 import RolesPage from "./pages/RolesPage";
 import SpecialDaysPage from "./pages/SpecialDaysPage";
 import ReportsPage from "./pages/ReportsPage";
+import HandoffPage from "./pages/HandoffPage";
 
 function ProtectedRoute({ children, perm }) {
   const { user, loading, hasPerm } = useAuth();
@@ -93,6 +94,14 @@ export default function App() {
         element={
           <ProtectedRoute perm="manage_schedule">
             <ReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/handoff"
+        element={
+          <ProtectedRoute>
+            <HandoffPage />
           </ProtectedRoute>
         }
       />

@@ -7,6 +7,7 @@ from scheduling.views import MonthConfigViewSet, ShiftPreferenceViewSet, ShiftAs
 from portal.views import AnnouncementViewSet, PollViewSet, DailyTaskViewSet
 from authentication.views import dev_login, logout_view, auth_status
 from scheduling.ai_views import ai_insights
+from handoff.views import ShiftNoteViewSet, HandoffSummaryViewSet
 
 router = DefaultRouter()
 router.register(r"users", UserViewSet)
@@ -20,6 +21,8 @@ router.register(r"announcements", AnnouncementViewSet, basename="announcements")
 router.register(r"polls", PollViewSet, basename="polls")
 router.register(r"tasks", DailyTaskViewSet, basename="tasks")
 router.register(r"special-days", SpecialDayViewSet, basename="special-days")
+router.register(r"shift-notes", ShiftNoteViewSet, basename="shift-notes")
+router.register(r"handoff-summaries", HandoffSummaryViewSet, basename="handoff-summaries")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

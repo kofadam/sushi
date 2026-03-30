@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "scheduling",
     "portal",
     "authentication",
+    "handoff",
 ]
 
 MIDDLEWARE = [
