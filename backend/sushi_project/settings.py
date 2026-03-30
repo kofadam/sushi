@@ -147,6 +147,15 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(",") if o.strip()
 ]
 
+# Cookie security — enable secure cookies when not in debug mode
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Ensure CSRF cookie is readable by JavaScript (for the API client)
+CSRF_COOKIE_HTTPONLY = False
+
 # Static
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
