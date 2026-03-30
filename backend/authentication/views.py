@@ -1,47 +1,50 @@
+import json
 from django.conf import settings
 from django.contrib.auth import login, logout
-from django.views.decorators.csrf import ensure_csrf_cookie
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST, require_GET
 from core.models import User
 
 
-@api_view(["POST"])
-@permission_classes([AllowAny])
+@csrf_exempt
+@require_POST
 def dev_login(request):
     """
     Development-only mock login. Disabled when DEBUG=False.
-    POST {username: "..."} to login as that user.
+    Plain Django view (not DRF) for reliable session cookie handling.
     """
     if not settings.DEBUG:
-        return Response({"error": "Not available in production"}, status=403)
+        return JsonResponse({"error": "Not available in production"}, status=403)
 
-    username = request.data.get("username")
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    username = data.get("username")
     try:
         user = User.objects.get(username=username)
     except User.DoesNotExist:
-        return Response({"error": "User not found"}, status=404)
+        return JsonResponse({"error": "User not found"}, status=404)
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-    return Response({"status": "ok", "username": user.username})
+    return JsonResponse({"status": "ok", "username": user.username})
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@csrf_exempt
+@require_POST
 def logout_view(request):
     logout(request)
-    return Response({"status": "ok"})
+    return JsonResponse({"status": "ok"})
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-@ensure_csrf_cookie
+@require_GET
 def auth_status(request):
     if request.user.is_authenticated:
-        return Response({
+        return JsonResponse({
             "authenticated": True,
             "username": request.user.username,
             "name": request.user.get_full_name(),
         })
-    return Response({"authenticated": False})
+    return JsonResponse({"authenticated": False})
