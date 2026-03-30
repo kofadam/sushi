@@ -34,9 +34,12 @@ def dev_login(request):
     response = JsonResponse({
         "status": "ok",
         "username": user.username,
+        "user_id": user.id,
+        "is_active": user.is_active,
+        "has_password": user.has_usable_password(),
         "session_key": request.session.session_key,
+        "session_modified": request.session.modified,
         "debug_secure": settings.SESSION_COOKIE_SECURE,
-        "debug_samesite": settings.SESSION_COOKIE_SAMESITE,
     })
     return response
 
