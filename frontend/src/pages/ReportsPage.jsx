@@ -82,31 +82,8 @@ export default function ReportsPage() {
           .map(d => d.date),
       };
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: `You are an assistant for a helpdesk shift manager in Israel. Analyze this monthly shift report and provide 3-5 actionable insights in Hebrew. Be concise and specific — point out problems, suggest solutions, and highlight what's going well. Use bullet points.
-
-Report data:
-${JSON.stringify(summary, null, 2)}
-
-Respond ONLY in Hebrew. Focus on:
-1. Coverage gaps and risks
-2. Team balance
-3. Specific recommendations
-4. What's working well (if anything)`
-          }],
-        }),
-      });
-
-      const data = await response.json();
-      const text = data.content?.map(c => c.text).join("\n") || "לא הצלחתי לנתח את הנתונים";
-      setAiInsight(text);
+      const data = await api.post("/ai/insights/", { report_summary: summary });
+      setAiInsight(data.insight || "לא הצלחתי לנתח את הנתונים");
     } catch (err) {
       setAiInsight("שגיאה בהפקת תובנות: " + err.message);
     } finally {

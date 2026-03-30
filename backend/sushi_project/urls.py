@@ -6,6 +6,7 @@ from core.views import me_view, UserViewSet, RoleViewSet, PermissionViewSet, Tea
 from scheduling.views import MonthConfigViewSet, ShiftPreferenceViewSet, ShiftAssignmentViewSet, SpecialDayViewSet
 from portal.views import AnnouncementViewSet, PollViewSet, DailyTaskViewSet
 from authentication.views import dev_login, logout_view, auth_status
+from scheduling.ai_views import ai_insights
 
 router = DefaultRouter()
 router.register(r"users", UserViewSet)
@@ -31,6 +32,8 @@ urlpatterns = [
     path("api/auth/logout/", logout_view, name="logout"),
     # OIDC (mozilla-django-oidc)
     path("oidc/", include("mozilla_django_oidc.urls")),
+    # AI
+    path("api/ai/insights/", ai_insights, name="ai-insights"),
 ]
 
 # SPA catch-all: serve index.html for any non-API, non-static route
