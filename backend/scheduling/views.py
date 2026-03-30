@@ -5,12 +5,13 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Count, Q
-from .models import MonthConfig, TeamMonthCapacity, ShiftPreference, ShiftAssignment
+from .models import MonthConfig, TeamMonthCapacity, ShiftPreference, ShiftAssignment, SpecialDay
 from .serializers import (
     MonthConfigSerializer, MonthConfigCreateSerializer,
     TeamMonthCapacitySerializer,
     ShiftPreferenceSerializer, BulkPreferenceSerializer,
     ShiftAssignmentSerializer, BulkAssignmentSerializer,
+    SpecialDaySerializer,
 )
 from core.models import Team, User
 from core.permissions import HasPermCode, IsManager
@@ -118,6 +119,20 @@ class MonthConfigViewSet(viewsets.ModelViewSet):
                 "team_name": a.team.name_he,
             })
 
+        # Special days for this month
+        special_days = {}
+        for sd in SpecialDay.objects.filter(
+            date__year=config.year, date__month=config.month
+        ):
+            special_days[sd.date.isoformat()] = {
+                "id": sd.id,
+                "day_type": sd.day_type,
+                "day_type_display": sd.get_day_type_display(),
+                "note": sd.note,
+                "end_time": sd.end_time.strftime("%H:%M") if sd.end_time else None,
+                "capacity_percent": sd.capacity_percent,
+            }
+
         return Response({
             "month_config": MonthConfigSerializer(config).data,
             "teams": teams,
@@ -125,6 +140,7 @@ class MonthConfigViewSet(viewsets.ModelViewSet):
             "working_days": working_days,
             "preferences_by_date": prefs_by_date,
             "assignments_by_date": assigns_by_date,
+            "special_days": special_days,
         })
 
 
@@ -256,3 +272,25 @@ class ShiftAssignmentViewSet(viewsets.ModelViewSet):
         if month_id:
             qs = qs.filter(month_config_id=month_id)
         return Response(ShiftAssignmentSerializer(qs, many=True).data)
+
+class SpecialDayViewSet(viewsets.ModelViewSet):
+    """Manage special days — holidays, half days, reduced capacity."""
+    serializer_class = SpecialDaySerializer
+    queryset = SpecialDay.objects.all()
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [IsAuthenticated()]
+        return [HasPermCode("manage_schedule")]
+
+    def get_queryset(self):
+        qs = SpecialDay.objects.select_related("created_by")
+        # Optional date range filter
+        year = self.request.query_params.get("year")
+        month = self.request.query_params.get("month")
+        if year and month:
+            qs = qs.filter(date__year=year, date__month=month)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

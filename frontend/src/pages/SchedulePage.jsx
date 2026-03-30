@@ -24,6 +24,7 @@ export default function SchedulePage() {
   const [view, setView] = useState("preferences");
   const [showCreateMonth, setShowCreateMonth] = useState(false);
   const [showMonthSettings, setShowMonthSettings] = useState(false);
+  const [specialDays, setSpecialDays] = useState({});
 
   const loadMonths = async () => {
     const [monthData, teamData] = await Promise.all([
@@ -59,9 +60,10 @@ export default function SchedulePage() {
   const loadMonthData = async () => {
     if (!selectedMonth) return;
     try {
-      const [prefData, assignData] = await Promise.all([
+      const [prefData, assignData, specialData] = await Promise.all([
         api.get(`/preferences/?month_config=${selectedMonth.id}`),
         api.get(`/assignments/?month_config=${selectedMonth.id}`),
+        api.get(`/special-days/?year=${selectedMonth.year}&month=${selectedMonth.month}`),
       ]);
       // Only show current user's preferences in the preferences view
       const myPrefs = (prefData.results || []).filter(
@@ -77,9 +79,20 @@ export default function SchedulePage() {
       setPreferences(prefMap);
       setAssignments(assignData.results || []);
 
+      // Build special days map by date
+      const sdMap = {};
+      for (const sd of (specialData.results || [])) {
+        sdMap[sd.date] = sd;
+      }
+      setSpecialDays(sdMap);
+
       if (hasPerm("manage_schedule")) {
         const dash = await api.get(`/months/${selectedMonth.id}/dashboard/`);
         setDashboardData(dash);
+        // Also use special days from dashboard if available
+        if (dash.special_days) {
+          setSpecialDays((prev) => ({ ...prev, ...dash.special_days }));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -153,9 +166,22 @@ export default function SchedulePage() {
     return <Layout><LoadingSpinner /></Layout>;
   }
 
-  const workingDays = selectedMonth
+  const allWorkingDays = selectedMonth
     ? getWorkingDaysForMonth(selectedMonth.year, selectedMonth.month)
     : [];
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // For tech preferences: filter out past days and full off-days
+  const workingDays = allWorkingDays.filter((d) => {
+    if (d < today) return false; // past
+    const sd = specialDays[d];
+    if (sd && (sd.day_type === "off")) return false; // full day off
+    return true;
+  });
+
+  // For manager view and assignments: show all days (including past, but mark special days)
+  const allDaysForManager = allWorkingDays;
 
   const myAssignments = assignments.filter((a) => a.employee === user?.id);
 
@@ -266,16 +292,18 @@ export default function SchedulePage() {
           onSubmit={submitPreferences}
           saving={saving}
           qualifiedTeams={user?.qualified_teams_detail || []}
+          specialDays={specialDays}
         />
       )}
 
       {selectedMonth && view === "assignments" && (
         <AssignmentsView
-          workingDays={workingDays}
+          workingDays={allDaysForManager}
           assignments={myAssignments}
           allAssignments={selectedMonth.is_published ? assignments : []}
           teams={teams}
           isPublished={selectedMonth.is_published}
+          specialDays={specialDays}
         />
       )}
 
@@ -560,7 +588,7 @@ function MonthSettingsModal({ monthConfig, teams, onClose, onUpdated }) {
    ============================================ */
 function PreferencesView({
   workingDays, teams, preferences, isOpen,
-  onToggleDate, onToggleTeam, onSubmit, saving, qualifiedTeams,
+  onToggleDate, onToggleTeam, onSubmit, saving, qualifiedTeams, specialDays = {},
 }) {
   const qualifiedTeamIds = qualifiedTeams.map((t) => t.id);
 
@@ -606,11 +634,13 @@ function PreferencesView({
           const d = new Date(dateStr + "T00:00:00");
           const dayNum = d.getDate();
           const dayName = getDayNameHe(dateStr);
+          const special = specialDays[dateStr];
 
           return (
             <div
               key={dateStr}
-              className={`grid grid-cols-[120px_1fr] gap-2 items-center p-2 rounded-lg transition-colors ${
+              className={`grid grid-cols-[180px_1fr] gap-2 items-center p-2 rounded-lg transition-colors ${
+                special?.day_type === "half" ? "bg-orange-50 border border-orange-200" :
                 selected ? "bg-brand-50 border border-brand-200" : "hover:bg-slate-50"
               } ${isToday(dateStr) ? "ring-2 ring-brand-400" : ""}`}
             >
@@ -629,6 +659,17 @@ function PreferencesView({
                 <span className="text-sm font-medium text-slate-900">
                   {dayName} {dayNum}
                 </span>
+                {special && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                    special.day_type === "half" ? "bg-orange-100 text-orange-700" :
+                    special.day_type === "reduced" ? "bg-yellow-100 text-yellow-700" :
+                    "bg-red-100 text-red-700"
+                  }`}>
+                    {special.day_type === "half" ? `חצי יום${special.end_time ? ` (עד ${special.end_time})` : ""}` :
+                     special.day_type === "reduced" ? `${special.capacity_percent}%` :
+                     special.note || "חופש"}
+                  </span>
+                )}
               </button>
 
               <div className="flex gap-2">

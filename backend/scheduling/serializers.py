@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import MonthConfig, TeamMonthCapacity, ShiftPreference, ShiftAssignment
+from .models import MonthConfig, TeamMonthCapacity, ShiftPreference, ShiftAssignment, SpecialDay
 from core.models import Team
 from core.serializers import TeamSerializer
 
@@ -98,3 +98,18 @@ class BulkAssignmentSerializer(serializers.Serializer):
         child=serializers.DictField(),
         help_text="List of {employee_id, date, team_id}"
     )
+
+
+class SpecialDaySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default="")
+    day_type_display = serializers.CharField(source="get_day_type_display", read_only=True)
+
+    class Meta:
+        model = SpecialDay
+        fields = [
+            "id", "date", "day_type", "day_type_display",
+            "note", "end_time", "capacity_percent",
+            "created_by", "created_by_name",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_by"]

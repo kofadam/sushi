@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   CalendarDays, LayoutDashboard, Users, Shield,
-  Megaphone, BarChart3, ClipboardCheck, LogOut, Menu, X,
+  Megaphone, BarChart3, ClipboardCheck, LogOut, Menu, X, CalendarOff,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -48,6 +48,7 @@ export function Layout({ children }) {
   const navItems = [
     { to: "/", icon: LayoutDashboard, label: "ראשי", show: true },
     { to: "/schedule", icon: CalendarDays, label: "משמרות", show: true },
+    { to: "/special-days", icon: CalendarOff, label: "ימים מיוחדים", show: hasPerm("manage_schedule") },
     { to: "/announcements", icon: Megaphone, label: "הודעות", show: true },
     { to: "/polls", icon: BarChart3, label: "סקרים", show: true },
     { to: "/tasks", icon: ClipboardCheck, label: "משימות", show: true },

@@ -9,6 +9,7 @@ import PollsPage from "./pages/PollsPage";
 import TasksPage from "./pages/TasksPage";
 import UsersPage from "./pages/UsersPage";
 import RolesPage from "./pages/RolesPage";
+import SpecialDaysPage from "./pages/SpecialDaysPage";
 
 function ProtectedRoute({ children, perm }) {
   const { user, loading, hasPerm } = useAuth();
@@ -75,6 +76,14 @@ export default function App() {
         element={
           <ProtectedRoute perm="manage_roles">
             <RolesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/special-days"
+        element={
+          <ProtectedRoute perm="manage_schedule">
+            <SpecialDaysPage />
           </ProtectedRoute>
         }
       />

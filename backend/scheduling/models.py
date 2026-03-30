@@ -112,3 +112,42 @@ class ShiftAssignment(models.Model):
 
     def __str__(self):
         return f"{self.employee} → {self.team.name_he} ({self.date})"
+
+
+class SpecialDay(models.Model):
+    """
+    A day with special scheduling rules — holiday, half day, or reduced capacity.
+    Managed by the manager via the Special Days page.
+    """
+
+    DAY_TYPES = [
+        ("off", "יום חופש"),
+        ("half", "חצי יום"),
+        ("reduced", "קיבולת מופחתת"),
+    ]
+
+    date = models.DateField("תאריך", unique=True)
+    day_type = models.CharField("סוג", max_length=10, choices=DAY_TYPES)
+    note = models.CharField("הערה", max_length=300, blank=True, help_text="סיבה או תיאור")
+    end_time = models.TimeField(
+        "שעת סיום", null=True, blank=True,
+        help_text="לחצי יום — שעת סיום העבודה (למשל 13:00)",
+    )
+    capacity_percent = models.IntegerField(
+        "אחוז קיבולת", default=100,
+        help_text="100 = רגיל, 50 = חצי מהמקומות, 0 = סגור",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name="created_special_days",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["date"]
+        verbose_name = "יום מיוחד"
+        verbose_name_plural = "ימים מיוחדים"
+
+    def __str__(self):
+        return f"{self.get_day_type_display()} — {self.date} ({self.note})"

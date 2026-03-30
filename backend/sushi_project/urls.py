@@ -3,7 +3,7 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from rest_framework.routers import DefaultRouter
 from core.views import me_view, UserViewSet, RoleViewSet, PermissionViewSet, TeamViewSet
-from scheduling.views import MonthConfigViewSet, ShiftPreferenceViewSet, ShiftAssignmentViewSet
+from scheduling.views import MonthConfigViewSet, ShiftPreferenceViewSet, ShiftAssignmentViewSet, SpecialDayViewSet
 from portal.views import AnnouncementViewSet, PollViewSet, DailyTaskViewSet
 from authentication.views import dev_login, logout_view, auth_status
 
@@ -18,6 +18,7 @@ router.register(r"assignments", ShiftAssignmentViewSet, basename="assignments")
 router.register(r"announcements", AnnouncementViewSet, basename="announcements")
 router.register(r"polls", PollViewSet, basename="polls")
 router.register(r"tasks", DailyTaskViewSet, basename="tasks")
+router.register(r"special-days", SpecialDayViewSet, basename="special-days")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
