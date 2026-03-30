@@ -29,7 +29,16 @@ def dev_login(request):
         return JsonResponse({"error": "User not found"}, status=404)
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-    return JsonResponse({"status": "ok", "username": user.username})
+    request.session.save()
+
+    response = JsonResponse({
+        "status": "ok",
+        "username": user.username,
+        "session_key": request.session.session_key,
+        "debug_secure": settings.SESSION_COOKIE_SECURE,
+        "debug_samesite": settings.SESSION_COOKIE_SAMESITE,
+    })
+    return response
 
 
 @csrf_exempt
