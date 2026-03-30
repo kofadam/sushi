@@ -1,4 +1,16 @@
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import BasePermission
+
+
+class CsrfExemptSessionAuthentication(SessionAuthentication):
+    """
+    Session authentication without CSRF enforcement.
+    Safe for same-origin deployments where the frontend is served
+    by the same Django app (no cross-origin requests).
+    """
+
+    def enforce_csrf(self, request):
+        return  # Skip CSRF check
 
 
 class HasPermCode(BasePermission):

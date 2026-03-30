@@ -118,7 +118,7 @@ LOGOUT_REDIRECT_URL = os.environ.get("LOGOUT_REDIRECT_URL", "http://localhost:51
 # DRF
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "core.permissions.CsrfExemptSessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
