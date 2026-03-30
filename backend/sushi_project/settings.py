@@ -153,9 +153,9 @@ IS_RAILWAY = bool(os.environ.get("DATABASE_URL"))
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-# Session and CSRF cookies — must be Secure on HTTPS (Railway)
-SESSION_COOKIE_SECURE = IS_RAILWAY or not DEBUG
-CSRF_COOKIE_SECURE = IS_RAILWAY or not DEBUG
+# TEMPORARY: Force non-secure cookies to debug Railway session issue
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 
