@@ -10,19 +10,28 @@ export default function DashboardPage() {
   const [announcements, setAnnouncements] = useState([]);
   const [polls, setPolls] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [todayAssigned, setTodayAssigned] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
-    Promise.all([
+    const fetches = [
       api.get("/announcements/").catch(() => ({ results: [] })),
       api.get("/polls/").catch(() => ({ results: [] })),
       api.get(`/tasks/?date=${today}`).catch(() => ({ results: [] })),
-    ]).then(([annData, pollData, taskData]) => {
+    ];
+    // Managers also fetch today's assignments
+    if (hasPerm("manage_schedule")) {
+      fetches.push(
+        api.get(`/assignments/?date=${today}`).catch(() => ({ results: [] }))
+      );
+    }
+    Promise.all(fetches).then(([annData, pollData, taskData, assignData]) => {
       setAnnouncements((annData.results || []).slice(0, 3));
       setPolls((pollData.results || []).slice(0, 3));
       setTasks(taskData.results || []);
+      if (assignData) setTodayAssigned((assignData.results || []).length);
       setLoading(false);
     });
   }, []);
@@ -164,7 +173,7 @@ export default function DashboardPage() {
                 <p className="text-xs text-blue-600 mt-1">צוותות פעילים</p>
               </div>
               <div className="text-center p-4 rounded-lg bg-green-50">
-                <p className="text-2xl font-bold text-green-700">—</p>
+                <p className="text-2xl font-bold text-green-700">{todayAssigned ?? "—"}</p>
                 <p className="text-xs text-green-600 mt-1">משובצים היום</p>
               </div>
             </div>

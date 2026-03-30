@@ -205,6 +205,9 @@ class ShiftAssignmentViewSet(viewsets.ModelViewSet):
         month_id = self.request.query_params.get("month_config")
         if month_id:
             qs = qs.filter(month_config_id=month_id)
+        date_filter = self.request.query_params.get("date")
+        if date_filter:
+            qs = qs.filter(date=date_filter)
         # Non-managers see only their own unless published
         if not user.has_perm_code("manage_schedule"):
             qs = qs.filter(

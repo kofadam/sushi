@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth import login, logout
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -35,6 +36,7 @@ def logout_view(request):
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+@ensure_csrf_cookie
 def auth_status(request):
     if request.user.is_authenticated:
         return Response({
